@@ -1,8 +1,7 @@
 ---
 services:
   openrouter-proxy:
-    build: .
-    image: openrouter-proxy:local
+    image: ${PROXY_IMAGE:-ghcr.io/schack/openrouter-proxy:latest}
     restart: unless-stopped
     ports:
       - "${PROXY_BIND_ADDRESS:-127.0.0.1}:${PROXY_PORT:-8080}:8080"
