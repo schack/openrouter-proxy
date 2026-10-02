@@ -6,6 +6,8 @@ RUN setcap -r /usr/bin/caddy
 
 FROM scratch
 
+LABEL org.opencontainers.image.source="https://github.com/schack/openrouter-proxy"
+
 COPY --from=caddy /usr/bin/caddy /usr/bin/caddy
 COPY --from=caddy /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=caddy --chown=1000:1000 /config/caddy /config/caddy

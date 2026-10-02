@@ -12,15 +12,31 @@ request bodies, response bodies, and streaming responses are proxied as-is.
 
 The runtime image is built from Caddy's official Alpine image into `scratch`.
 It contains the Caddy binary, system CA certificates, and this configuration,
-not a shell or package manager. Build the image on the proxy host to use its
-CPU architecture.
+not a shell or package manager. CI publishes it to
+`ghcr.io/schack/openrouter-proxy` for `linux/amd64` and `linux/arm64` on every
+merge to `main`, signed with keyless cosign.
 
 ## Run
 
-1. Copy this directory to the proxy host.
+1. Copy `compose.yaml` and `.env.example` to a directory on the proxy host.
 2. Copy `.env.example` to `.env`, set `OPENROUTER_API_KEY`, and restrict access
    to the file. Do not commit `.env`.
-3. From this directory, run `docker compose up --build -d`.
+3. From that directory, run `docker compose up -d`.
+
+To update, run `docker compose pull && docker compose up -d`. To control when
+updates happen, set `PROXY_IMAGE` in `.env` to a digest
+(`ghcr.io/schack/openrouter-proxy@sha256:...`) instead of the `latest` tag.
+
+Verify the signature before running a new image:
+
+```sh
+cosign verify ghcr.io/schack/openrouter-proxy:latest \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity https://github.com/schack/openrouter-proxy/.github/workflows/ci.yml@refs/heads/main
+```
+
+To build locally instead, run `docker build -t openrouter-proxy:local .` and set
+`PROXY_IMAGE=openrouter-proxy:local` in `.env`.
 
 The default port binding is loopback-only (`127.0.0.1:8080`). To allow another
 device to connect, change `PROXY_BIND_ADDRESS` in `.env` to the proxy host's
@@ -62,6 +78,8 @@ or other places where the real key is stored.
 - `PROXY_BIND_ADDRESS`: host interface for the published port, defaults to
   `127.0.0.1`.
 - `PROXY_PORT`: host port, defaults to `8080`.
+- `PROXY_IMAGE`: image to run, defaults to
+  `ghcr.io/schack/openrouter-proxy:latest`.
 
 The Caddyfile header injection behavior is documented at
 https://caddyserver.com/docs/caddyfile/directives/reverse_proxy.
@@ -75,6 +93,7 @@ auto-merge.
 CI lints the Dockerfile, builds the image, validates the Caddy configuration
 and the injected and removed headers, and sends a request through the running
 container to `/api/v1/auth/key` with a well-formed but nonexistent key.
-OpenRouter answers
-`User not found.` only when the proxy replaced the client's headers with that
-key, which proves the injection end to end.
+OpenRouter answers `User not found.` only when the proxy replaced the client's
+headers with that key, which proves the injection end to end. After those
+checks pass on `main`, CI builds both architectures, pushes `latest` and
+`sha-<commit>` tags, and signs the pushed digest.
