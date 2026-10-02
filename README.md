@@ -1,2 +1,80 @@
-# openrouter-proxy
-Caddy reverse proxy that keeps the OpenRouter API key off client machines
+# OpenRouter proxy
+
+Keep your real OpenRouter API key on a separate proxy host, out of reach of
+OpenCode and other clients. Give those clients only the proxy URL and a
+placeholder key. Caddy forwards requests to `https://openrouter.ai`, replacing
+any incoming `Authorization` header with the key configured on the proxy host
+in `OPENROUTER_API_KEY`. Client-supplied `X-API-Key` headers are removed, and
+so are the `X-Forwarded-For`, `X-Forwarded-Host`, `X-Forwarded-Proto` and
+`Via` headers Caddy would otherwise add, so OpenRouter does not learn client
+addresses, the proxy's hostname, or that it runs Caddy. Paths, query strings,
+request bodies, response bodies, and streaming responses are proxied as-is.
+
+The runtime image is built from Caddy's official Alpine image into `scratch`.
+It contains the Caddy binary, system CA certificates, and this configuration,
+not a shell or package manager. Build the image on the proxy host to use its
+CPU architecture.
+
+## Run
+
+1. Copy this directory to the proxy host.
+2. Copy `.env.example` to `.env`, set `OPENROUTER_API_KEY`, and restrict access
+   to the file. Do not commit `.env`.
+3. From this directory, run `docker compose up --build -d`.
+
+The default port binding is loopback-only (`127.0.0.1:8080`). To allow another
+device to connect, change `PROXY_BIND_ADDRESS` in `.env` to the proxy host's
+network IP and run `docker compose up -d` again. Anyone who can reach the proxy
+can use your OpenRouter account (including other containers on the Compose network),
+so do not expose it to the public internet. Client-to-proxy HTTP traffic,
+including prompts and responses, is unencrypted. For clients outside a trusted
+network, put it behind an authenticated HTTPS proxy or use a VPN. The
+connection from Caddy to OpenRouter uses verified HTTPS.
+
+## Use
+
+Set the client's OpenAI-compatible base URL to
+`http://<PROXY-HOST-IP>:8080/api/v1`.
+The client's API key can be any placeholder because the proxy replaces it:
+
+```text
+OPENAI_BASE_URL=http://<PROXY-HOST-IP>:8080/api/v1
+OPENAI_API_KEY=placeholder
+```
+
+The proxy forwards all paths to OpenRouter, so OpenRouter endpoints outside
+`/api/v1` are available too. SSE responses are streamed by Caddy without
+buffering the complete response.
+
+## Security boundary
+
+The real key must exist only on the proxy host, not in client configuration,
+environment variables, or credential stores on the computer running the TUI.
+Clients can still **use** your OpenRouter account through the proxy: hiding the
+key does not prevent requests or charges. Keep the proxy reachable only by
+devices you trust. This separation also depends on the TUI and its tools not
+having access to the proxy host's `.env`, container environment, Docker API,
+or other places where the real key is stored.
+
+## Configuration
+
+- `OPENROUTER_API_KEY`: required OpenRouter API key.
+- `PROXY_BIND_ADDRESS`: host interface for the published port, defaults to
+  `127.0.0.1`.
+- `PROXY_PORT`: host port, defaults to `8080`.
+
+The Caddyfile header injection behavior is documented at
+https://caddyserver.com/docs/caddyfile/directives/reverse_proxy.
+
+Dependabot checks the base image and GitHub Actions weekly. The 21-day cooldown
+only takes effect for GitHub Actions: Docker Hub sends no `Last-Modified`
+header, so Dependabot cannot date images and opens base image PRs immediately.
+Check the age of a new base image digest before merging, and do not enable
+auto-merge.
+
+CI lints the Dockerfile, builds the image, validates the Caddy configuration
+and the injected and removed headers, and sends a request through the running
+container to `/api/v1/auth/key` with a well-formed but nonexistent key.
+OpenRouter answers
+`User not found.` only when the proxy replaced the client's headers with that
+key, which proves the injection end to end.
