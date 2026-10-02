@@ -1,0 +1,84 @@
+---
+name: CI
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      # Well-formed but nonexistent, so OpenRouter answers "User not found."
+      # only if the proxy actually sent it.
+      OPENROUTER_API_KEY: sk-or-v1-0
+    steps:
+      - name: Checkout
+        # yamllint disable-line rule:line-length
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint Dockerfile
+        # yamllint disable-line rule:line-length
+        uses: hadolint/hadolint-action@2a66e89f53d0771bb131a7fa31f3136336094aa6  # v3.4.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+
+      - name: Build image
+        run: docker compose build
+
+      - name: Validate Caddyfile
+        run: |
+          docker run --rm --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges:true \
+            -e OPENROUTER_API_KEY openrouter-proxy:local \
+            validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          docker run --rm -e OPENROUTER_API_KEY openrouter-proxy:local \
+            fmt /etc/caddy/Caddyfile | cmp - Caddyfile
+
+      - name: Check proxy routing and request headers
+        run: |
+          docker run --rm -e OPENROUTER_API_KEY openrouter-proxy:local \
+            adapt --config /etc/caddy/Caddyfile --adapter caddyfile | \
+            jq -e --arg auth "Bearer $OPENROUTER_API_KEY" '
+              (.admin.disabled == true) and
+              (.admin.config.persist == false) and
+              (.apps.http.servers.srv0.routes[0].handle[0] |
+                .handler == "reverse_proxy" and
+                .upstreams == [{"dial": "openrouter.ai:443"}] and
+                .transport.tls == {} and
+                .headers.request.set.Authorization == [$auth] and
+                (["X-API-Key", "X-Forwarded-For", "X-Forwarded-Host",
+                  "X-Forwarded-Proto", "Via"] -
+                  .headers.request.delete == []))' > /dev/null
+
+      - name: Start and check hardened container
+        run: |
+          docker compose up --no-build -d
+          docker compose ps --status running --quiet | grep -q .
+          body=$(curl --silent --show-error --max-time 30 \
+            --retry 10 --retry-all-errors --retry-delay 1 \
+            -H 'Authorization: Bearer client-supplied' \
+            -H 'X-API-Key: client-supplied' \
+            http://127.0.0.1:8080/api/v1/auth/key)
+          jq -e '.error.message == "User not found."' <<<"$body" \
+            > /dev/null || {
+            echo "Unexpected response: $body"
+            exit 1
+          }
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop container
+        if: always()
+        run: docker compose down
