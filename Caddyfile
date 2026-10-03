@@ -3,7 +3,7 @@
 	persist_config off
 }
 
-:8765 {
+:8080 {
 	reverse_proxy https://openrouter.ai {
 		header_up Authorization "Bearer {$OPENROUTER_API_KEY}"
 		header_up -X-API-Key
