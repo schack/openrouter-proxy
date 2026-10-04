@@ -90,12 +90,24 @@ header, so Dependabot cannot date images and opens base image PRs immediately.
 Check the age of a new base image digest before merging, and do not enable
 auto-merge.
 
-CI lints the Dockerfile, builds the image, validates the Caddy configuration
-and the injected and removed headers, and sends a request through the running
-container to `/api/v1/auth/key` with a well-formed but nonexistent key.
+CI lints the Dockerfile, builds the image, scans the final `scratch` image with
+Trivy, validates the Caddy configuration and the injected and removed headers,
+and sends a request through the running container to `/api/v1/auth/key` with
+a well-formed but nonexistent key.
 OpenRouter answers `User not found.` only when the proxy replaced the client's
 headers with that key, which proves the injection end to end. After those
 checks pass on `main`, CI builds both architectures, pushes `latest` and
 `sha-<commit>` tags, and signs the pushed digest.
 
+The vulnerability scan reports all severities in the CI logs and blocks the
+required `check` job for HIGH or CRITICAL findings with an available fix.
+Unfixed findings remain visible but do not block CI. Trivy inspects Go dependency
+and compiler-version metadata embedded in the Caddy binary; it does not provide
+complete coverage of vulnerabilities in Caddy itself. CI also runs every Monday
+at 06:23 UTC to catch newly disclosed vulnerabilities without a code change.
+Scheduled runs do not publish images. The scanner version is pinned separately
+from its action and needs periodic review, observing the 21-day cooldown; its
+vulnerability database is refreshed during scans.
 
+Trivy's Go scanning coverage is documented at
+https://trivy.dev/latest/docs/coverage/language/golang/.
