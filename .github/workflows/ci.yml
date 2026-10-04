@@ -6,6 +6,8 @@ name: CI
     branches: [main]
   pull_request:
   workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
 
 permissions: {}
 
@@ -35,6 +37,24 @@ jobs:
 
       - name: Build image
         run: docker build -t "$PROXY_IMAGE" .
+
+      - name: Report container vulnerabilities
+        # yamllint disable-line rule:line-length
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          image-ref: ${{ env.PROXY_IMAGE }}
+          version: v0.74.0
+          scanners: vuln
+          format: table
+          exit-code: "0"
+        env:
+          TRIVY_IMAGE_SRC: docker
+
+      - name: Block fixable high and critical vulnerabilities
+        run: |
+          trivy image --image-src docker --scanners vuln \
+            --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 \
+            "$PROXY_IMAGE"
 
       - name: Validate Caddyfile
         run: |
