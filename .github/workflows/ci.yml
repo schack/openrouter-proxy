@@ -217,5 +217,5 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Caddy ${GITHUB_REF_NAME#v}" \
+            --title "${GITHUB_REF_NAME#v}" \
             --generate-notes
