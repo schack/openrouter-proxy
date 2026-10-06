@@ -1,4 +1,4 @@
-FROM caddy:2.11.6-alpine@sha256:c776e0c6413b544d0459665e54ec7b8b2a15000c0cbee8b254da0067b1d184ff AS caddy
+FROM caddy:2.11.7-alpine@sha256:d76116d819d5162f464b0f2cd09bd28c568a86148c7bc539ce17c33eb22d8bbb AS caddy
 
 # The upstream binary has cap_net_bind_service, which is unnecessary on 8080
 # and prevents execution when the runtime drops all capabilities.
