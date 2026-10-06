@@ -14,7 +14,9 @@ The runtime image is built from Caddy's official Alpine image into `scratch`.
 It contains the Caddy binary, system CA certificates, and this configuration,
 not a shell or package manager. CI publishes it to
 `ghcr.io/schack/openrouter-proxy` for `linux/amd64` and `linux/arm64` on every
-merge to `main`, signed with keyless cosign.
+merge to `main`, signed with keyless cosign. Caddy-version releases also publish
+a matching version tag, such as `:2.11.7`, and create a GitHub release from the
+matching `v2.11.7` Git tag.
 
 ## Run
 
@@ -34,6 +36,9 @@ cosign verify ghcr.io/schack/openrouter-proxy:latest \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity https://github.com/schack/openrouter-proxy/.github/workflows/ci.yml@refs/heads/main
 ```
+
+For a versioned image, use its release-tag identity when verifying, for example
+`https://github.com/schack/openrouter-proxy/.github/workflows/ci.yml@refs/tags/v2.11.7`.
 
 To build locally instead, run `docker build -t openrouter-proxy:local .` and set
 `PROXY_IMAGE=openrouter-proxy:local` in `.env`.
@@ -97,7 +102,12 @@ a well-formed but nonexistent key.
 OpenRouter answers `User not found.` only when the proxy replaced the client's
 headers with that key, which proves the injection end to end. After those
 checks pass on `main`, CI builds both architectures, pushes `latest` and
-`sha-<commit>` tags, and signs the pushed digest.
+`sha-<commit>` tags, and signs the pushed digest. To make a release, push a
+`vMAJOR.MINOR.PATCH` Git tag on a commit already on `main`, matching the Caddy
+version pinned in `Dockerfile`. CI validates that match, publishes the
+corresponding `MAJOR.MINOR.PATCH` image tag, signs the image, and creates a
+GitHub release with generated notes. The commit tag was published when the
+commit was merged to `main`. Release tags do not move `latest`.
 
 The vulnerability scan reports all severities in the CI logs and blocks the
 required `check` job for HIGH or CRITICAL findings with an available fix.
